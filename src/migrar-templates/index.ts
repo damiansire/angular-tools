@@ -160,20 +160,29 @@ export function migrarTemplates(): Rule {
               const templatePropertyNode = getDecoratorPropertyNode(componentDecorator, "template");
               if (templatePropertyNode) {
                 const recorder = tree.beginUpdate(filePath);
-                let removalStart = templatePropertyNode.getFullStart();
-                let removalEnd = templatePropertyNode.getEnd();
+                const fileLength = content.length;
+                
+                // Calculate safe removal range
+                let removalStart = Math.max(0, templatePropertyNode.getFullStart());
+                let removalEnd = Math.min(fileLength, templatePropertyNode.getEnd());
 
-                const textBeforeNode = sourceFile.text.substring(0, templatePropertyNode.getFullStart());
+                // Check for comma before
+                const textBeforeNode = content.substring(0, removalStart);
                 const commaMatchBefore = textBeforeNode.match(/,\s*$/);
                 
                 if (commaMatchBefore) {
-                  removalStart -= commaMatchBefore[0].length;
+                  removalStart = Math.max(0, removalStart - commaMatchBefore[0].length);
                 }
 
-                recorder.remove(removalStart, removalEnd - removalStart);
-                const textToInsert = `,\n  templateUrl: '${relativeHtmlPath}'`;
-                recorder.insertLeft(templatePropertyNode.getStart(sourceFile), textToInsert);
-                tree.commitUpdate(recorder);
+                // Ensure we're not trying to remove beyond file bounds
+                if (removalStart < fileLength && removalEnd <= fileLength) {
+                  recorder.remove(removalStart, removalEnd - removalStart);
+                  const textToInsert = `,\n  templateUrl: '${relativeHtmlPath}'`;
+                  recorder.insertLeft(removalStart, textToInsert);
+                  tree.commitUpdate(recorder);
+                } else {
+                  context.logger.warn(`  ⚠️ Skipping template update for ${filePath}: Invalid removal range`);
+                }
               }
             }
           }
@@ -192,31 +201,40 @@ export function migrarTemplates(): Rule {
 
               if (stylesPropertyNode) {
                 const recorder = tree.beginUpdate(filePath);
-                let removalStart = stylesPropertyNode.getFullStart();
-                let removalEnd = stylesPropertyNode.getEnd();
+                const fileLength = content.length;
+                
+                // Calculate safe removal range
+                let removalStart = Math.max(0, stylesPropertyNode.getFullStart());
+                let removalEnd = Math.min(fileLength, stylesPropertyNode.getEnd());
 
-                const textBeforeNode = sourceFile.text.substring(0, stylesPropertyNode.getFullStart());
+                // Check for comma before
+                const textBeforeNode = content.substring(0, removalStart);
                 const commaMatchBefore = textBeforeNode.match(/,\s*$/);
                 
                 if (commaMatchBefore) {
-                  removalStart -= commaMatchBefore[0].length;
+                  removalStart = Math.max(0, removalStart - commaMatchBefore[0].length);
                 }
 
-                recorder.remove(removalStart, removalEnd - removalStart);
+                // Ensure we're not trying to remove beyond file bounds
+                if (removalStart < fileLength && removalEnd <= fileLength) {
+                  recorder.remove(removalStart, removalEnd - removalStart);
 
-                if (Array.isArray(stylesContent)) {
-                  const styleUrls = stylesContent.map((style, index) => 
-                    createScssFile(tree, componentDir, componentBaseName, style, index)
-                  );
-                  const textToInsert = `,\n  styleUrls: [${styleUrls.map(url => `'${url}'`).join(', ')}]`;
-                  recorder.insertLeft(stylesPropertyNode.getStart(sourceFile), textToInsert);
+                  if (Array.isArray(stylesContent)) {
+                    const styleUrls = stylesContent.map((style, index) => 
+                      createScssFile(tree, componentDir, componentBaseName, style, index)
+                    );
+                    const textToInsert = `,\n  styleUrls: [${styleUrls.map(url => `'${url}'`).join(', ')}]`;
+                    recorder.insertLeft(removalStart, textToInsert);
+                  } else {
+                    const scssPath = createScssFile(tree, componentDir, componentBaseName, stylesContent);
+                    const textToInsert = `,\n  styleUrls: ['${scssPath}']`;
+                    recorder.insertLeft(removalStart, textToInsert);
+                  }
+
+                  tree.commitUpdate(recorder);
                 } else {
-                  const scssPath = createScssFile(tree, componentDir, componentBaseName, stylesContent);
-                  const textToInsert = `,\n  styleUrls: ['${scssPath}']`;
-                  recorder.insertLeft(stylesPropertyNode.getStart(sourceFile), textToInsert);
+                  context.logger.warn(`  ⚠️ Skipping styles update for ${filePath}: Invalid removal range`);
                 }
-
-                tree.commitUpdate(recorder);
               }
             }
           }
