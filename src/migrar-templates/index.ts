@@ -81,20 +81,25 @@ function getDecoratorPropertyNode(
 
 export function migrarTemplates(): Rule {
   return (tree: Tree, context: SchematicContext): Tree => {
-    context.logger.info("Searching for components with inline templates...");
+    context.logger.info("🚀 Iniciando búsqueda de componentes con plantillas en línea...");
 
     tree.getDir("/").visit((filePath) => {
-      context.logger.info(`Reviewing ${filePath}`);
+      // Log principal para cada archivo
+      context.logger.info(`\n🔍 Analizando archivo: ${filePath}`);
+
       // Process only *.component.ts files
       if (!filePath.endsWith(".component.ts")) {
+        context.logger.debug(`  ➡️ Omitiendo (no es un archivo .component.ts)`);
         return;
       }
+      context.logger.debug(`  ✅ Es un archivo .component.ts, continuando...`);
 
       const fileBuffer = tree.read(filePath);
       if (!fileBuffer) {
-        context.logger.warn(`Could not read file: ${filePath}`);
+        context.logger.warn(`  ⚠️ No se pudo leer el archivo: ${filePath}`);
         return;
       }
+      context.logger.debug(`  📄 Archivo leído correctamente.`);
 
       const content = fileBuffer.toString("utf-8");
       const sourceFile = ts.createSourceFile(
@@ -103,69 +108,82 @@ export function migrarTemplates(): Rule {
         ts.ScriptTarget.Latest,
         true // setParentNodes is important for analysis
       );
+      context.logger.debug(`  🌳 Archivo parseado a AST de TypeScript.`);
 
       // Find the @Component decorator
+      context.logger.debug(`  🔎 Buscando el decorador @Component...`);
       const componentDecorator = findComponentDecorator(sourceFile);
       if (!componentDecorator) {
-        // Not a standard Angular component or has no decorator, skip
+        context.logger.debug(`  ❌ Decorador @Component no encontrado o no es estándar. Omitiendo.`);
         return;
       }
+      context.logger.debug(`  👍 Decorador @Component encontrado.`);
 
       // Check if it already has templateUrl
+      context.logger.debug(`  🔎 Verificando si ya existe 'templateUrl'...`);
       const hasTemplateUrl = componentDecorator.properties.some(
         (prop) => ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "templateUrl"
       );
 
       if (hasTemplateUrl) {
-        context.logger.debug(`Skipping ${filePath}: already has templateUrl.`);
+        context.logger.info(`  ➡️ Omitiendo ${filePath}: ya tiene 'templateUrl'.`);
         return; // Already has templateUrl, do nothing
       }
+      context.logger.debug(`  👍 No tiene 'templateUrl', buscando 'template' en línea...`);
 
       // Find the 'template' property and get its content
       const templateContent = getDecoratorPropertyValue(componentDecorator, "template");
 
       if (templateContent === undefined) {
-        // Has neither 'templateUrl' nor 'template', skip
-        context.logger.debug(`Skipping ${filePath}: inline template not found.`);
+        context.logger.info(`  ➡️ Omitiendo ${filePath}: no se encontró propiedad 'template' en línea.`);
         return;
       }
+      context.logger.debug(`  👍 Propiedad 'template' encontrada con contenido.`);
 
       // --- Required Actions ---
-      context.logger.info(`Processing ${filePath}: migrating inline template.`);
+      context.logger.info(`  ✨ Procesando ${filePath}: Migrando plantilla en línea a archivo externo.`);
 
       // 1. Determine the path for the new HTML file
+      context.logger.debug(`    📝 Determinando ruta para el nuevo archivo HTML...`);
       const componentDir = dirname(filePath);
       const componentBaseName = basename(filePath, ".ts"); // e.g., 'my-component.component'
       const htmlFileName = `${componentBaseName}.html`; // e.g., 'my-component.component.html'
       const htmlFilePath = normalize(join(componentDir, htmlFileName));
       const relativeHtmlPath = `./${htmlFileName}`; // Relative path for templateUrl
+      context.logger.debug(`    📂 Ruta del archivo HTML: ${htmlFilePath}`);
+      context.logger.debug(`    🔗 Ruta relativa para templateUrl: ${relativeHtmlPath}`);
 
       // 2. Create the HTML file (if it doesn't exist)
+      context.logger.debug(`    🔎 Verificando si el archivo HTML ya existe...`);
       if (tree.exists(htmlFilePath)) {
-        context.logger.warn(`HTML file already exists, creation will be skipped: ${htmlFilePath}`);
+        context.logger.warn(`    ⚠️ El archivo HTML ya existe, se omitirá la creación: ${htmlFilePath}`);
         // You could decide to overwrite or stop here. Skipping is safer.
         // If you wanted to overwrite: tree.overwrite(htmlFilePath, templateContent);
       } else {
+        context.logger.debug(`    ➕ Creando archivo HTML: ${htmlFilePath}...`);
         tree.create(htmlFilePath, templateContent);
-        context.logger.debug(`Created ${htmlFilePath}`);
+        context.logger.debug(`    ✅ Archivo HTML creado.`);
       }
 
       // 3. Update the .ts file
+      context.logger.debug(`    🔄 Actualizando archivo TypeScript (${filePath})...`);
       const templatePropertyNode = getDecoratorPropertyNode(componentDecorator, "template");
       if (!templatePropertyNode) {
         // This shouldn't happen if templateContent was found, but it's a good check
         context.logger.error(
-          `Critical error: Could not find the 'template' property node in ${filePath} after getting its content.`
+          `    ❌ Error crítico: No se pudo encontrar el nodo de la propiedad 'template' en ${filePath} después de obtener su contenido. Omitiendo actualización.`
         );
         return; // Skip update for this file
       }
+      context.logger.debug(`    👍 Nodo de la propiedad 'template' encontrado.`);
 
       // Build the new templateUrl property
       const newTemplateUrlProperty = `templateUrl: '${relativeHtmlPath}'`;
+      context.logger.debug(`    🔧 Construyendo nueva propiedad: ${newTemplateUrlProperty}`);
 
       const recorder = tree.beginUpdate(filePath);
       const properties = componentDecorator.properties;
-      // const templatePropertyIndex = properties.indexOf(templatePropertyNode); // <- Removed
+      context.logger.debug(`    📐 Calculando rango para eliminar la propiedad 'template' y manejar comas...`);
 
       // --- Modified Logic for Calculating Removal Range ---
       let removalStart = templatePropertyNode.getFullStart(); // Includes leading trivia (spaces, comments)
@@ -184,6 +202,7 @@ export function migrarTemplates(): Rule {
           removalEnd += commaMatchAfter[0].length;
           // The inserted property will also need a comma, as it won't be the last one.
           needsCommaInserted = true;
+          context.logger.debug(`      Found comma after, extending removal range. New property will need a comma.`);
         } else {
           // If there's no comma after, it means it was the last property.
           // Look for a comma optionally followed by spaces *before* the full start of the current node.
@@ -195,30 +214,44 @@ export function migrarTemplates(): Rule {
             removalStart -= commaMatchBefore[0].length;
             // The inserted property will be the new last one, so it doesn't need a comma.
             needsCommaInserted = false;
+            context.logger.debug(`      Found comma before, adjusting removal start. New property won't need a comma.`);
+          } else {
+            context.logger.debug(
+              `      No comma found before or after (or only one property). Using default removal range.`
+            );
           }
           // If there's no comma before or after (and properties.length > 1), something is odd,
           // but the default logic of just removing the node might work.
           // If properties.length === 1, nothing is done here, just remove the node.
         }
+      } else {
+        context.logger.debug(`      Only one property ('template'). Simple removal.`);
       }
       // --- End of Modified Logic ---
 
       // Remove the old 'template' property and its associated formatting (comma/spaces)
+      context.logger.debug(`    ➖ Eliminando propiedad 'template' (rango ${removalStart} - ${removalEnd})...`);
       recorder.remove(removalStart, removalEnd - removalStart);
 
       // Build the text to insert
       const textToInsert = `${newTemplateUrlProperty}${needsCommaInserted ? "," : ""}`;
+      context.logger.debug(
+        `    ➕ Insertando nueva propiedad '${textToInsert}' en la posición ${templatePropertyNode.getStart(
+          sourceFile
+        )}...`
+      );
 
       // Insert the new 'templateUrl' property at the position where the original code of the removed node started
       // (using getStart() instead of getFullStart() to avoid inserting before initial comments/spaces)
       recorder.insertLeft(templatePropertyNode.getStart(sourceFile), textToInsert);
 
       // Apply the changes to the virtual tree
+      context.logger.debug(`    💾 Aplicando cambios al archivo...`);
       tree.commitUpdate(recorder);
-      context.logger.info(`Updated ${filePath}: replaced 'template' with 'templateUrl'.`);
+      context.logger.info(`  ✅ Actualizado ${filePath}: se reemplazó 'template' con 'templateUrl'.`);
     });
 
-    context.logger.info("Inline template migration completed.");
+    context.logger.info("\n🏁 Migración de plantillas en línea completada.");
     return tree;
   };
 }
