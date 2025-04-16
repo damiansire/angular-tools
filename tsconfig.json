@@ -11,6 +11,7 @@
     "noImplicitThis": true,
     "noUnusedParameters": true,
     "noUnusedLocals": true,
+    "outDir": "./dist",
     "rootDir": "src/",
     "skipDefaultLibCheck": true,
     "skipLibCheck": true,
@@ -20,5 +21,5 @@
     "types": ["jasmine", "node"]
   },
   "include": ["src/**/*"],
-  "exclude": ["src/*/files/**/*"]
+  "exclude": ["src/*/files/**/*", "node_modules", "dist"]
 }
