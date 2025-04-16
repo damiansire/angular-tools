@@ -1,6 +1,6 @@
 {
     "$schema": "http://json-schema.org/schema",
-    "id": "MigrarTemplatesInlineSchema",
+    "$id": "MigrarTemplatesInlineSchema",
     "title": "Migrar Templates Inline Schema",
     "type": "object",
     "properties": {},

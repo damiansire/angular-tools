@@ -84,6 +84,7 @@ export function migrarTemplates(): Rule {
     context.logger.info("Buscando componentes con templates inline...");
 
     tree.getDir("/").visit((filePath) => {
+      context.logger.info(`Revisando ${filePath}`);
       // Procesar solo archivos *.component.ts
       if (!filePath.endsWith(".component.ts")) {
         return;
