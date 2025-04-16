@@ -1,0 +1,17 @@
+{
+  "$schema": "../node_modules/@angular-devkit/schematics/collection-schema.json",
+  "schematics": {
+    "inline-template-schematic": {
+      "description": "A blank schematic.",
+      "factory": "./inline-template-schematic/index#inlineTemplateSchematic"
+    },
+    "migrar-templates": {
+      "description": "Migra templates inline ('template') en componentes a archivos HTML externos ('templateUrl').",
+      "factory": "./migrar-templates/index#migrarTemplates",
+      "schema": "./migrar-templates/schema.json",
+      "aliases": [
+        "mt"
+      ]
+    }
+  }
+}

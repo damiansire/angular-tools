@@ -1,0 +1,25 @@
+{
+  "name": "inline-template-schematic",
+  "version": "0.0.0",
+  "description": "A blank schematics",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && jasmine src/**/*_spec.js"
+  },
+  "keywords": [
+    "schematics"
+  ],
+  "author": "",
+  "license": "MIT",
+  "schematics": "./src/collection.json",
+  "dependencies": {
+    "@angular-devkit/core": "^19.2.7",
+    "@angular-devkit/schematics": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/jasmine": "~5.1.0",
+    "@types/node": "^18.18.0",
+    "jasmine": "^5.0.0",
+    "typescript": "^5.8.3"
+  }
+}
