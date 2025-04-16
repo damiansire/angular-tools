@@ -1,8 +1,8 @@
-import { Rule, SchematicContext, Tree } from "@angular-devkit/schematics"; // <- SchematicsException removed
+import { Rule, SchematicContext, Tree } from "@angular-devkit/schematics";
 import { dirname, join, basename, normalize } from "path";
-import * as ts from "typescript"; // You'll need 'npm install typescript --save-dev'
+import * as ts from "typescript";
 
-// --- Helper Functions for TypeScript AST Analysis ---
+// --- Helper Functions Restored ---
 
 /**
  * Finds the ObjectLiteralExpression node within the @Component decorator.
@@ -44,7 +44,7 @@ function findComponentDecorator(sourceFile: ts.SourceFile): ts.ObjectLiteralExpr
 function getDecoratorPropertyValue(decorator: ts.ObjectLiteralExpression, propertyName: string): string | undefined {
   const property = decorator.properties.find(
     (
-      prop
+      prop // Type guard added below
     ): prop is ts.PropertyAssignment => // Type guard to ensure it's a PropertyAssignment
       ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === propertyName
   );
@@ -70,7 +70,7 @@ function getDecoratorPropertyNode(
 ): ts.PropertyAssignment | null {
   const property = decorator.properties.find(
     (
-      prop
+      prop // Type guard added below
     ): prop is ts.PropertyAssignment => // Type guard
       ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === propertyName
   );
@@ -81,177 +81,195 @@ function getDecoratorPropertyNode(
 
 export function migrarTemplates(): Rule {
   return (tree: Tree, context: SchematicContext): Tree => {
-    context.logger.info("🚀 Iniciando búsqueda de componentes con plantillas en línea...");
+    context.logger.info("🚀 Starting search for components with inline templates..."); // Translated
 
-    tree.getDir("/").visit((filePath) => {
-      // Log principal para cada archivo
-      context.logger.info(`\n🔍 Analizando archivo: ${filePath}`);
+    try {
+      // <-- Add a general try in case getDir fails
+      tree.getDir("/").visit((filePath) => {
+        // *** START OF PER-FILE TRY-CATCH BLOCK ***
+        try {
+          // Main log for each file
+          context.logger.info(`\n🔍 Analyzing file: ${filePath}`); // Translated (kept emoji)
 
-      // Process only *.component.ts files
-      if (!filePath.endsWith(".component.ts")) {
-        context.logger.debug(`  ➡️ Omitiendo (no es un archivo .component.ts)`);
-        return;
-      }
-      context.logger.debug(`  ✅ Es un archivo .component.ts, continuando...`);
-
-      const fileBuffer = tree.read(filePath);
-      if (!fileBuffer) {
-        context.logger.warn(`  ⚠️ No se pudo leer el archivo: ${filePath}`);
-        return;
-      }
-      context.logger.debug(`  📄 Archivo leído correctamente.`);
-
-      const content = fileBuffer.toString("utf-8");
-      const sourceFile = ts.createSourceFile(
-        filePath,
-        content,
-        ts.ScriptTarget.Latest,
-        true // setParentNodes is important for analysis
-      );
-      context.logger.debug(`  🌳 Archivo parseado a AST de TypeScript.`);
-
-      // Find the @Component decorator
-      context.logger.debug(`  🔎 Buscando el decorador @Component...`);
-      const componentDecorator = findComponentDecorator(sourceFile);
-      if (!componentDecorator) {
-        context.logger.debug(`  ❌ Decorador @Component no encontrado o no es estándar. Omitiendo.`);
-        return;
-      }
-      context.logger.debug(`  👍 Decorador @Component encontrado.`);
-
-      // Check if it already has templateUrl
-      context.logger.debug(`  🔎 Verificando si ya existe 'templateUrl'...`);
-      const hasTemplateUrl = componentDecorator.properties.some(
-        (prop) => ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "templateUrl"
-      );
-
-      if (hasTemplateUrl) {
-        context.logger.info(`  ➡️ Omitiendo ${filePath}: ya tiene 'templateUrl'.`);
-        return; // Already has templateUrl, do nothing
-      }
-      context.logger.debug(`  👍 No tiene 'templateUrl', buscando 'template' en línea...`);
-
-      // Find the 'template' property and get its content
-      const templateContent = getDecoratorPropertyValue(componentDecorator, "template");
-
-      if (templateContent === undefined) {
-        context.logger.info(`  ➡️ Omitiendo ${filePath}: no se encontró propiedad 'template' en línea.`);
-        return;
-      }
-      context.logger.debug(`  👍 Propiedad 'template' encontrada con contenido.`);
-
-      // --- Required Actions ---
-      context.logger.info(`  ✨ Procesando ${filePath}: Migrando plantilla en línea a archivo externo.`);
-
-      // 1. Determine the path for the new HTML file
-      context.logger.debug(`    📝 Determinando ruta para el nuevo archivo HTML...`);
-      const componentDir = dirname(filePath);
-      const componentBaseName = basename(filePath, ".ts"); // e.g., 'my-component.component'
-      const htmlFileName = `${componentBaseName}.html`; // e.g., 'my-component.component.html'
-      const htmlFilePath = normalize(join(componentDir, htmlFileName));
-      const relativeHtmlPath = `./${htmlFileName}`; // Relative path for templateUrl
-      context.logger.debug(`    📂 Ruta del archivo HTML: ${htmlFilePath}`);
-      context.logger.debug(`    🔗 Ruta relativa para templateUrl: ${relativeHtmlPath}`);
-
-      // 2. Create the HTML file (if it doesn't exist)
-      context.logger.debug(`    🔎 Verificando si el archivo HTML ya existe...`);
-      if (tree.exists(htmlFilePath)) {
-        context.logger.warn(`    ⚠️ El archivo HTML ya existe, se omitirá la creación: ${htmlFilePath}`);
-        // You could decide to overwrite or stop here. Skipping is safer.
-        // If you wanted to overwrite: tree.overwrite(htmlFilePath, templateContent);
-      } else {
-        context.logger.debug(`    ➕ Creando archivo HTML: ${htmlFilePath}...`);
-        tree.create(htmlFilePath, templateContent);
-        context.logger.debug(`    ✅ Archivo HTML creado.`);
-      }
-
-      // 3. Update the .ts file
-      context.logger.debug(`    🔄 Actualizando archivo TypeScript (${filePath})...`);
-      const templatePropertyNode = getDecoratorPropertyNode(componentDecorator, "template");
-      if (!templatePropertyNode) {
-        // This shouldn't happen if templateContent was found, but it's a good check
-        context.logger.error(
-          `    ❌ Error crítico: No se pudo encontrar el nodo de la propiedad 'template' en ${filePath} después de obtener su contenido. Omitiendo actualización.`
-        );
-        return; // Skip update for this file
-      }
-      context.logger.debug(`    👍 Nodo de la propiedad 'template' encontrado.`);
-
-      // Build the new templateUrl property
-      const newTemplateUrlProperty = `templateUrl: '${relativeHtmlPath}'`;
-      context.logger.debug(`    🔧 Construyendo nueva propiedad: ${newTemplateUrlProperty}`);
-
-      const recorder = tree.beginUpdate(filePath);
-      const properties = componentDecorator.properties;
-      context.logger.debug(`    📐 Calculando rango para eliminar la propiedad 'template' y manejar comas...`);
-
-      // --- Modified Logic for Calculating Removal Range ---
-      let removalStart = templatePropertyNode.getFullStart(); // Includes leading trivia (spaces, comments)
-      let removalEnd = templatePropertyNode.getEnd(); // End of the node itself
-      let needsCommaInserted = false; // Flag to know if the new property needs a trailing comma
-
-      if (properties.length > 1) {
-        // Only adjust commas/spaces if there is more than one property
-        const textAfterNode = sourceFile.text.substring(templatePropertyNode.getEnd());
-        // Look for a comma optionally preceded by spaces after the current node
-        const commaMatchAfter = textAfterNode.match(/^\s*,/);
-
-        if (commaMatchAfter) {
-          // If there is a comma after (it wasn't the last property),
-          // extend the removal to include that comma and the spaces before it.
-          removalEnd += commaMatchAfter[0].length;
-          // The inserted property will also need a comma, as it won't be the last one.
-          needsCommaInserted = true;
-          context.logger.debug(`      Found comma after, extending removal range. New property will need a comma.`);
-        } else {
-          // If there's no comma after, it means it was the last property.
-          // Look for a comma optionally followed by spaces *before* the full start of the current node.
-          const textBeforeNode = sourceFile.text.substring(0, templatePropertyNode.getFullStart());
-          const commaMatchBefore = textBeforeNode.match(/,\s*$/);
-          if (commaMatchBefore) {
-            // If there is a comma before, adjust the start of the removal
-            // to include that comma and the spaces after it.
-            removalStart -= commaMatchBefore[0].length;
-            // The inserted property will be the new last one, so it doesn't need a comma.
-            needsCommaInserted = false;
-            context.logger.debug(`      Found comma before, adjusting removal start. New property won't need a comma.`);
-          } else {
-            context.logger.debug(
-              `      No comma found before or after (or only one property). Using default removal range.`
-            );
+          // Process only *.component.ts files
+          if (!filePath.endsWith(".component.ts")) {
+            context.logger.debug(`  ➡️ Skipping (not a .component.ts file)`); // Translated
+            return;
           }
-          // If there's no comma before or after (and properties.length > 1), something is odd,
-          // but the default logic of just removing the node might work.
-          // If properties.length === 1, nothing is done here, just remove the node.
+          context.logger.debug(`  ✅ It's a .component.ts file, continuing...`); // Translated
+
+          const fileBuffer = tree.read(filePath);
+          if (!fileBuffer) {
+            context.logger.warn(`  ⚠️ Could not read file: ${filePath}`); // Translated
+            return;
+          }
+          context.logger.debug(`  📄 File read successfully.`); // Translated
+
+          const content = fileBuffer.toString("utf-8");
+          const sourceFile = ts.createSourceFile(
+            filePath,
+            content,
+            ts.ScriptTarget.Latest,
+            true // setParentNodes is important for analysis
+          );
+          context.logger.debug(`  🌳 File parsed into TypeScript AST.`); // Translated
+
+          // Find the @Component decorator
+          context.logger.debug(`  🔎 Searching for @Component decorator...`); // Translated
+          const componentDecorator = findComponentDecorator(sourceFile); // Now defined
+          if (!componentDecorator) {
+            context.logger.debug(`  ❌ @Component decorator not found or non-standard. Skipping.`); // Translated
+            return;
+          }
+          context.logger.debug(`  👍 @Component decorator found.`); // Translated
+
+          // Check if it already has templateUrl
+          context.logger.debug(`  🔎 Checking if 'templateUrl' already exists...`); // Translated
+          // *** FIX for TS7006: Added type ts.ObjectLiteralElementLike ***
+          const hasTemplateUrl = componentDecorator.properties.some(
+            (prop: ts.ObjectLiteralElementLike) =>
+              ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "templateUrl"
+          );
+
+          if (hasTemplateUrl) {
+            context.logger.info(`  ➡️ Skipping ${filePath}: already has 'templateUrl'.`); // Translated
+            return; // Already has templateUrl, do nothing
+          }
+          context.logger.debug(`  👍 Does not have 'templateUrl', searching for inline 'template'...`); // Translated
+
+          // Find the 'template' property and get its content
+          const templateContent = getDecoratorPropertyValue(componentDecorator, "template"); // Now defined
+
+          if (templateContent === undefined) {
+            context.logger.info(`  ➡️ Skipping ${filePath}: inline 'template' property not found.`); // Translated
+            return;
+          }
+          context.logger.debug(`  👍 'template' property found with content.`); // Translated
+
+          // --- Required Actions ---
+          context.logger.info(`  ✨ Processing ${filePath}: Migrating inline template to external file.`); // Translated
+
+          // 1. Determine the path for the new HTML file
+          context.logger.debug(`    📝 Determining path for the new HTML file...`); // Translated
+          const componentDir = dirname(filePath);
+          const componentBaseName = basename(filePath, ".ts"); // e.g., 'my-component.component'
+          const htmlFileName = `${componentBaseName}.html`; // e.g., 'my-component.component.html'
+          const htmlFilePath = normalize(join(componentDir, htmlFileName));
+          const relativeHtmlPath = `./${htmlFileName}`; // Relative path for templateUrl
+          context.logger.debug(`    📂 HTML file path: ${htmlFilePath}`); // Translated
+          context.logger.debug(`    🔗 Relative path for templateUrl: ${relativeHtmlPath}`); // Translated
+
+          // 2. Create the HTML file (if it doesn't exist)
+          context.logger.debug(`    🔎 Checking if the HTML file already exists...`); // Translated
+          if (tree.exists(htmlFilePath)) {
+            context.logger.warn(`    ⚠️ HTML file already exists, creation will be skipped: ${htmlFilePath}`); // Translated
+          } else {
+            context.logger.debug(`    ➕ Creating HTML file: ${htmlFilePath}...`); // Translated
+            tree.create(htmlFilePath, templateContent);
+            context.logger.debug(`    ✅ HTML file created.`); // Translated
+          }
+
+          // 3. Update the .ts file
+          context.logger.debug(`    🔄 Updating TypeScript file (${filePath})...`); // Translated
+          const templatePropertyNode = getDecoratorPropertyNode(componentDecorator, "template"); // Now defined
+          if (!templatePropertyNode) {
+            context.logger.error(
+              `    ❌ Critical error: Could not find the 'template' property node in ${filePath} after getting its content. Skipping update.` // Translated
+            );
+            return; // Skip update for this file
+          }
+          context.logger.debug(`    👍 'template' property node found.`); // Translated
+
+          // Build the new templateUrl property
+          const newTemplateUrlProperty = `templateUrl: '${relativeHtmlPath}'`;
+          context.logger.debug(`    🔧 Building new property: ${newTemplateUrlProperty}`); // Translated
+
+          const recorder = tree.beginUpdate(filePath);
+          const properties = componentDecorator.properties;
+          context.logger.debug(`    📐 Calculating range to remove 'template' property and handle commas...`); // Translated
+
+          // --- Modified Logic for Calculating Removal Range ---
+          let removalStart = templatePropertyNode.getFullStart();
+          let removalEnd = templatePropertyNode.getEnd();
+          let needsCommaInserted = false;
+
+          if (properties.length > 1) {
+            const textAfterNode = sourceFile.text.substring(templatePropertyNode.getEnd());
+            const commaMatchAfter = textAfterNode.match(/^\s*,/);
+
+            if (commaMatchAfter) {
+              removalEnd += commaMatchAfter[0].length;
+              needsCommaInserted = true;
+              context.logger.debug(`      Found comma after, extending removal range. New property will need a comma.`); // Kept English
+            } else {
+              const textBeforeNode = sourceFile.text.substring(0, templatePropertyNode.getFullStart());
+              const commaMatchBefore = textBeforeNode.match(/,\s*$/);
+              if (commaMatchBefore) {
+                removalStart -= commaMatchBefore[0].length;
+                needsCommaInserted = false;
+                context.logger.debug(
+                  `      Found comma before, adjusting removal start. New property won't need a comma.` // Kept English
+                );
+              } else {
+                context.logger.debug(
+                  `      No comma found before or after (or only one property). Using default removal range.` // Kept English
+                );
+              }
+            }
+          } else {
+            context.logger.debug(`      Only one property ('template'). Simple removal.`); // Kept English
+          }
+          // --- End of Modified Logic ---
+
+          context.logger.debug(`    ➖ Removing 'template' property (range ${removalStart} - ${removalEnd})...`); // Translated
+          recorder.remove(removalStart, removalEnd - removalStart);
+
+          const textToInsert = `${newTemplateUrlProperty}${needsCommaInserted ? "," : ""}`;
+          context.logger.debug(
+            `    ➕ Inserting new property '${textToInsert}' at position ${templatePropertyNode.getStart(
+              sourceFile
+            )}...` // Translated
+          );
+
+          recorder.insertLeft(templatePropertyNode.getStart(sourceFile), textToInsert);
+
+          context.logger.debug(`    💾 Applying changes to the file...`); // Translated
+          tree.commitUpdate(recorder);
+          context.logger.info(`  ✅ Updated ${filePath}: replaced 'template' with 'templateUrl'.`); // Translated
+
+          // *** START OF PER-FILE CATCH BLOCK *** // Kept English comment marker
+        } catch (error) {
+          context.logger.error(`💥 Error processing file ${filePath}:`); // Translated
+          // Print the error message and, if available, the stack trace
+          if (error instanceof Error) {
+            context.logger.error(`  Message: ${error.message}`); // Translated
+            if (error.stack) {
+              context.logger.error(`  Stack: ${error.stack}`); // Translated
+            }
+          } else {
+            context.logger.error(`  Error: ${String(error)}`); // Translated
+          }
+          // You can decide whether to continue with other files or stop everything.
+          // For now, we just log and continue with the next file.
+        }
+        // *** END OF PER-FILE TRY-CATCH BLOCK *** // Kept English comment marker
+      });
+    } catch (error) {
+      // <-- Catch errors from getDir or visit itself
+      context.logger.fatal(`❌ Fatal error starting file traversal:`); // Translated
+      if (error instanceof Error) {
+        context.logger.fatal(`  Message: ${error.message}`); // Translated
+        if (error.stack) {
+          context.logger.fatal(`  Stack: ${error.stack}`); // Translated
         }
       } else {
-        context.logger.debug(`      Only one property ('template'). Simple removal.`);
+        context.logger.fatal(`  Error: ${String(error)}`); // Translated
       }
-      // --- End of Modified Logic ---
+      // Here you should probably stop execution
+      throw error; // Rethrow the error to stop the schematic
+    }
 
-      // Remove the old 'template' property and its associated formatting (comma/spaces)
-      context.logger.debug(`    ➖ Eliminando propiedad 'template' (rango ${removalStart} - ${removalEnd})...`);
-      recorder.remove(removalStart, removalEnd - removalStart);
-
-      // Build the text to insert
-      const textToInsert = `${newTemplateUrlProperty}${needsCommaInserted ? "," : ""}`;
-      context.logger.debug(
-        `    ➕ Insertando nueva propiedad '${textToInsert}' en la posición ${templatePropertyNode.getStart(
-          sourceFile
-        )}...`
-      );
-
-      // Insert the new 'templateUrl' property at the position where the original code of the removed node started
-      // (using getStart() instead of getFullStart() to avoid inserting before initial comments/spaces)
-      recorder.insertLeft(templatePropertyNode.getStart(sourceFile), textToInsert);
-
-      // Apply the changes to the virtual tree
-      context.logger.debug(`    💾 Aplicando cambios al archivo...`);
-      tree.commitUpdate(recorder);
-      context.logger.info(`  ✅ Actualizado ${filePath}: se reemplazó 'template' con 'templateUrl'.`);
-    });
-
-    context.logger.info("\n🏁 Migración de plantillas en línea completada.");
+    context.logger.info("\n🏁 Inline template migration (potentially) completed."); // Translated final message
     return tree;
   };
 }
