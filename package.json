@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "description": "A blank schematics",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && npm run copy-root-files && npm run copy-src-files",
+    "copy-root-files": "copyfiles package.json dist",
+    "copy-src-files": "copyfiles -u 1 src/**/*.json src/**/files/* src/**/*.template dist",
     "test": "npm run build && jasmine src/**/*_spec.js"
   },
   "keywords": [
@@ -11,7 +13,7 @@
   ],
   "author": "",
   "license": "MIT",
-  "schematics": "./src/collection.json",
+  "schematics": "./collection.json",
   "dependencies": {
     "@angular-devkit/core": "^19.2.7",
     "@angular-devkit/schematics": "^19.2.7"
@@ -19,6 +21,7 @@
   "devDependencies": {
     "@types/jasmine": "~5.1.0",
     "@types/node": "^18.18.0",
+    "copyfiles": "^2.4.1",
     "jasmine": "^5.0.0",
     "typescript": "^5.8.3"
   }
