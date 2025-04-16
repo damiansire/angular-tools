@@ -1,17 +1,17 @@
-import { Rule, SchematicContext, Tree } from "@angular-devkit/schematics"; // <- SchematicsException eliminado
+import { Rule, SchematicContext, Tree } from "@angular-devkit/schematics"; // <- SchematicsException removed
 import { dirname, join, basename, normalize } from "path";
-import * as ts from "typescript"; // Necesitarás 'npm install typescript --save-dev'
+import * as ts from "typescript"; // You'll need 'npm install typescript --save-dev'
 
-// --- Funciones Auxiliares para analizar el AST de TypeScript ---
+// --- Helper Functions for TypeScript AST Analysis ---
 
 /**
- * Encuentra el nodo ObjectLiteralExpression dentro del decorador @Component.
+ * Finds the ObjectLiteralExpression node within the @Component decorator.
  */
 function findComponentDecorator(sourceFile: ts.SourceFile): ts.ObjectLiteralExpression | null {
   let componentDecorator: ts.ObjectLiteralExpression | null = null;
 
   function visitNode(node: ts.Node) {
-    // Usar ts.canHaveDecorators para chequear si el nodo puede tener decoradores (más moderno)
+    // Use ts.canHaveDecorators to check if the node can have decorators (more modern)
     if (ts.canHaveDecorators && ts.canHaveDecorators(node) && ts.isClassDeclaration(node)) {
       const decorators = ts.getDecorators(node);
       if (decorators) {
@@ -21,7 +21,7 @@ function findComponentDecorator(sourceFile: ts.SourceFile): ts.ObjectLiteralExpr
             if (ts.isIdentifier(expression.expression) && expression.expression.text === "Component") {
               if (expression.arguments.length > 0 && ts.isObjectLiteralExpression(expression.arguments[0])) {
                 componentDecorator = expression.arguments[0];
-                return; // Encontrado, detener búsqueda
+                return; // Found, stop searching
               }
             }
           }
@@ -29,7 +29,7 @@ function findComponentDecorator(sourceFile: ts.SourceFile): ts.ObjectLiteralExpr
       }
     }
     if (!componentDecorator) {
-      // Continuar buscando si no se ha encontrado
+      // Continue searching if not found
       ts.forEachChild(node, visitNode);
     }
   }
@@ -39,30 +39,30 @@ function findComponentDecorator(sourceFile: ts.SourceFile): ts.ObjectLiteralExpr
 }
 
 /**
- * Obtiene el valor de una propiedad específica (como 'template' o 'templateUrl') del decorador.
+ * Gets the value of a specific property (like 'template' or 'templateUrl') from the decorator.
  */
 function getDecoratorPropertyValue(decorator: ts.ObjectLiteralExpression, propertyName: string): string | undefined {
   const property = decorator.properties.find(
     (
       prop
-    ): prop is ts.PropertyAssignment => // Type guard para asegurar que es PropertyAssignment
+    ): prop is ts.PropertyAssignment => // Type guard to ensure it's a PropertyAssignment
       ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === propertyName
   );
 
   if (property) {
-    // Ya sabemos que es PropertyAssignment gracias al type guard
+    // We already know it's PropertyAssignment thanks to the type guard
     const initializer = property.initializer;
-    // Maneja strings literales ('...') y template literals (`...`)
+    // Handles string literals ('...') and template literals (`...`)
     if (ts.isStringLiteral(initializer) || ts.isNoSubstitutionTemplateLiteral(initializer)) {
       return initializer.text;
     }
-    // Podrías añadir manejo para otros casos si fuera necesario (ej: identificadores)
+    // You could add handling for other cases if necessary (e.g., identifiers)
   }
   return undefined;
 }
 
 /**
- * Encuentra el nodo de una propiedad específica dentro del decorador.
+ * Finds the node of a specific property within the decorator.
  */
 function getDecoratorPropertyNode(
   decorator: ts.ObjectLiteralExpression,
@@ -74,25 +74,25 @@ function getDecoratorPropertyNode(
     ): prop is ts.PropertyAssignment => // Type guard
       ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === propertyName
   );
-  return property || null; // Si find no lo encuentra, devuelve undefined, que se convierte en null con ||
+  return property || null; // If find doesn't find it, it returns undefined, which becomes null with ||
 }
 
-// --- Regla Principal del Schematic ---
+// --- Main Schematic Rule ---
 
 export function migrarTemplates(): Rule {
   return (tree: Tree, context: SchematicContext): Tree => {
-    context.logger.info("Buscando componentes con templates inline...");
+    context.logger.info("Searching for components with inline templates...");
 
     tree.getDir("/").visit((filePath) => {
-      context.logger.info(`Revisando ${filePath}`);
-      // Procesar solo archivos *.component.ts
+      context.logger.info(`Reviewing ${filePath}`);
+      // Process only *.component.ts files
       if (!filePath.endsWith(".component.ts")) {
         return;
       }
 
       const fileBuffer = tree.read(filePath);
       if (!fileBuffer) {
-        context.logger.warn(`No se pudo leer el archivo: ${filePath}`);
+        context.logger.warn(`Could not read file: ${filePath}`);
         return;
       }
 
@@ -101,124 +101,124 @@ export function migrarTemplates(): Rule {
         filePath,
         content,
         ts.ScriptTarget.Latest,
-        true // setParentNodes es importante para el análisis
+        true // setParentNodes is important for analysis
       );
 
-      // Encontrar el decorador @Component
+      // Find the @Component decorator
       const componentDecorator = findComponentDecorator(sourceFile);
       if (!componentDecorator) {
-        // No es un componente Angular estándar o no tiene decorador, omitir
+        // Not a standard Angular component or has no decorator, skip
         return;
       }
 
-      // Verificar si ya tiene templateUrl
+      // Check if it already has templateUrl
       const hasTemplateUrl = componentDecorator.properties.some(
         (prop) => ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "templateUrl"
       );
 
       if (hasTemplateUrl) {
-        context.logger.debug(`Omitiendo ${filePath}: ya tiene templateUrl.`);
-        return; // Ya tiene templateUrl, no hacer nada
+        context.logger.debug(`Skipping ${filePath}: already has templateUrl.`);
+        return; // Already has templateUrl, do nothing
       }
 
-      // Buscar la propiedad 'template' y obtener su contenido
+      // Find the 'template' property and get its content
       const templateContent = getDecoratorPropertyValue(componentDecorator, "template");
 
       if (templateContent === undefined) {
-        // No tiene 'templateUrl' ni 'template', omitir
-        context.logger.debug(`Omitiendo ${filePath}: no se encontró template inline.`);
+        // Has neither 'templateUrl' nor 'template', skip
+        context.logger.debug(`Skipping ${filePath}: inline template not found.`);
         return;
       }
 
-      // --- Acciones Requeridas ---
-      context.logger.info(`Procesando ${filePath}: migrando template inline.`);
+      // --- Required Actions ---
+      context.logger.info(`Processing ${filePath}: migrating inline template.`);
 
-      // 1. Determinar la ruta del nuevo archivo HTML
+      // 1. Determine the path for the new HTML file
       const componentDir = dirname(filePath);
-      const componentBaseName = basename(filePath, ".ts"); // ej: 'mi-componente.component'
-      const htmlFileName = `${componentBaseName}.html`; // ej: 'mi-componente.component.html'
+      const componentBaseName = basename(filePath, ".ts"); // e.g., 'my-component.component'
+      const htmlFileName = `${componentBaseName}.html`; // e.g., 'my-component.component.html'
       const htmlFilePath = normalize(join(componentDir, htmlFileName));
-      const relativeHtmlPath = `./${htmlFileName}`; // Ruta relativa para templateUrl
+      const relativeHtmlPath = `./${htmlFileName}`; // Relative path for templateUrl
 
-      // 2. Crear el archivo HTML (si no existe)
+      // 2. Create the HTML file (if it doesn't exist)
       if (tree.exists(htmlFilePath)) {
-        context.logger.warn(`El archivo HTML ya existe, se omitirá la creación: ${htmlFilePath}`);
-        // Podrías decidir sobrescribir o parar aquí. Omitir es más seguro.
-        // Si quisieras sobrescribir: tree.overwrite(htmlFilePath, templateContent);
+        context.logger.warn(`HTML file already exists, creation will be skipped: ${htmlFilePath}`);
+        // You could decide to overwrite or stop here. Skipping is safer.
+        // If you wanted to overwrite: tree.overwrite(htmlFilePath, templateContent);
       } else {
         tree.create(htmlFilePath, templateContent);
-        context.logger.debug(`Creado ${htmlFilePath}`);
+        context.logger.debug(`Created ${htmlFilePath}`);
       }
 
-      // 3. Actualizar el archivo .ts
+      // 3. Update the .ts file
       const templatePropertyNode = getDecoratorPropertyNode(componentDecorator, "template");
       if (!templatePropertyNode) {
-        // Esto no debería pasar si templateContent fue encontrado, pero es una buena verificación
+        // This shouldn't happen if templateContent was found, but it's a good check
         context.logger.error(
-          `Error crítico: No se encontró el nodo de la propiedad 'template' en ${filePath} después de obtener su contenido.`
+          `Critical error: Could not find the 'template' property node in ${filePath} after getting its content.`
         );
-        return; // Omitir actualización para este archivo
+        return; // Skip update for this file
       }
 
-      // Construir la nueva propiedad templateUrl
+      // Build the new templateUrl property
       const newTemplateUrlProperty = `templateUrl: '${relativeHtmlPath}'`;
 
       const recorder = tree.beginUpdate(filePath);
       const properties = componentDecorator.properties;
-      // const templatePropertyIndex = properties.indexOf(templatePropertyNode); // <- Eliminado
+      // const templatePropertyIndex = properties.indexOf(templatePropertyNode); // <- Removed
 
-      // --- Lógica Modificada para Calcular el Rango de Eliminación ---
-      let removalStart = templatePropertyNode.getFullStart(); // Incluye trivia inicial (espacios, comentarios)
-      let removalEnd = templatePropertyNode.getEnd(); // Fin del nodo en sí
-      let needsCommaInserted = false; // Flag para saber si la nueva propiedad necesita una coma al final
+      // --- Modified Logic for Calculating Removal Range ---
+      let removalStart = templatePropertyNode.getFullStart(); // Includes leading trivia (spaces, comments)
+      let removalEnd = templatePropertyNode.getEnd(); // End of the node itself
+      let needsCommaInserted = false; // Flag to know if the new property needs a trailing comma
 
       if (properties.length > 1) {
-        // Solo ajustar comas/espacios si hay más de una propiedad
+        // Only adjust commas/spaces if there is more than one property
         const textAfterNode = sourceFile.text.substring(templatePropertyNode.getEnd());
-        // Busca una coma opcionalmente precedida por espacios después del nodo actual
+        // Look for a comma optionally preceded by spaces after the current node
         const commaMatchAfter = textAfterNode.match(/^\s*,/);
 
         if (commaMatchAfter) {
-          // Si hay una coma después (no era la última propiedad),
-          // extender la eliminación para incluir esa coma y los espacios anteriores a ella.
+          // If there is a comma after (it wasn't the last property),
+          // extend the removal to include that comma and the spaces before it.
           removalEnd += commaMatchAfter[0].length;
-          // La propiedad insertada también necesitará una coma, ya que no será la última.
+          // The inserted property will also need a comma, as it won't be the last one.
           needsCommaInserted = true;
         } else {
-          // Si no hay coma después, significa que era la última propiedad.
-          // Buscar una coma opcionalmente seguida de espacios *antes* del inicio completo del nodo actual.
+          // If there's no comma after, it means it was the last property.
+          // Look for a comma optionally followed by spaces *before* the full start of the current node.
           const textBeforeNode = sourceFile.text.substring(0, templatePropertyNode.getFullStart());
           const commaMatchBefore = textBeforeNode.match(/,\s*$/);
           if (commaMatchBefore) {
-            // Si hay una coma antes, ajustar el inicio de la eliminación
-            // para incluir esa coma y los espacios posteriores a ella.
+            // If there is a comma before, adjust the start of the removal
+            // to include that comma and the spaces after it.
             removalStart -= commaMatchBefore[0].length;
-            // La propiedad insertada será la nueva última, por lo que no necesita coma.
+            // The inserted property will be the new last one, so it doesn't need a comma.
             needsCommaInserted = false;
           }
-          // Si no hay coma antes ni después (y properties.length > 1), algo es raro,
-          // pero la lógica por defecto de eliminar solo el nodo podría funcionar.
-          // Si properties.length === 1, no se hace nada aquí, solo se elimina el nodo.
+          // If there's no comma before or after (and properties.length > 1), something is odd,
+          // but the default logic of just removing the node might work.
+          // If properties.length === 1, nothing is done here, just remove the node.
         }
       }
-      // --- Fin de la Lógica Modificada ---
+      // --- End of Modified Logic ---
 
-      // Eliminar la propiedad 'template' antigua y su formato asociado (coma/espacios)
+      // Remove the old 'template' property and its associated formatting (comma/spaces)
       recorder.remove(removalStart, removalEnd - removalStart);
 
-      // Construir el texto a insertar
+      // Build the text to insert
       const textToInsert = `${newTemplateUrlProperty}${needsCommaInserted ? "," : ""}`;
 
-      // Insertar la nueva propiedad 'templateUrl' en la posición donde comenzaba el código original del nodo eliminado
-      // (usando getStart() en lugar de getFullStart() para evitar insertar antes de los comentarios/espacios iniciales)
+      // Insert the new 'templateUrl' property at the position where the original code of the removed node started
+      // (using getStart() instead of getFullStart() to avoid inserting before initial comments/spaces)
       recorder.insertLeft(templatePropertyNode.getStart(sourceFile), textToInsert);
 
-      // Aplicar los cambios al árbol virtual
+      // Apply the changes to the virtual tree
       tree.commitUpdate(recorder);
-      context.logger.info(`Actualizado ${filePath}: se reemplazó 'template' por 'templateUrl'.`);
+      context.logger.info(`Updated ${filePath}: replaced 'template' with 'templateUrl'.`);
     });
 
-    context.logger.info("Migración de templates inline completada.");
+    context.logger.info("Inline template migration completed.");
     return tree;
   };
 }
