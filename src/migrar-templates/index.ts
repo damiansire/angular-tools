@@ -85,7 +85,7 @@ export function migrarTemplates(): Rule {
 
     try {
       // <-- Add a general try in case getDir fails
-      tree.getDir("/").visit((filePath) => {
+      tree.getDir("/src").visit((filePath) => {
         // *** START OF PER-FILE TRY-CATCH BLOCK ***
         try {
           // Main log for each file
@@ -185,46 +185,26 @@ export function migrarTemplates(): Rule {
           context.logger.debug(`    🔧 Building new property: ${newTemplateUrlProperty}`); // Translated
 
           const recorder = tree.beginUpdate(filePath);
-          const properties = componentDecorator.properties;
           context.logger.debug(`    📐 Calculating range to remove 'template' property and handle commas...`); // Translated
 
           // --- Modified Logic for Calculating Removal Range ---
           let removalStart = templatePropertyNode.getFullStart();
           let removalEnd = templatePropertyNode.getEnd();
-          let needsCommaInserted = false;
 
-          if (properties.length > 1) {
-            const textAfterNode = sourceFile.text.substring(templatePropertyNode.getEnd());
-            const commaMatchAfter = textAfterNode.match(/^\s*,/);
-
-            if (commaMatchAfter) {
-              removalEnd += commaMatchAfter[0].length;
-              needsCommaInserted = true;
-              context.logger.debug(`      Found comma after, extending removal range. New property will need a comma.`); // Kept English
-            } else {
-              const textBeforeNode = sourceFile.text.substring(0, templatePropertyNode.getFullStart());
-              const commaMatchBefore = textBeforeNode.match(/,\s*$/);
-              if (commaMatchBefore) {
-                removalStart -= commaMatchBefore[0].length;
-                needsCommaInserted = false;
-                context.logger.debug(
-                  `      Found comma before, adjusting removal start. New property won't need a comma.` // Kept English
-                );
-              } else {
-                context.logger.debug(
-                  `      No comma found before or after (or only one property). Using default removal range.` // Kept English
-                );
-              }
-            }
-          } else {
-            context.logger.debug(`      Only one property ('template'). Simple removal.`); // Kept English
+          // Check if there's a comma before the template property
+          const textBeforeNode = sourceFile.text.substring(0, templatePropertyNode.getFullStart());
+          const commaMatchBefore = textBeforeNode.match(/,\s*$/);
+          
+          if (commaMatchBefore) {
+            // If there's a comma before, we need to keep it
+            removalStart -= commaMatchBefore[0].length;
           }
-          // --- End of Modified Logic ---
 
           context.logger.debug(`    ➖ Removing 'template' property (range ${removalStart} - ${removalEnd})...`); // Translated
           recorder.remove(removalStart, removalEnd - removalStart);
 
-          const textToInsert = `${newTemplateUrlProperty}${needsCommaInserted ? "," : ""}`;
+          // Insert the new property with proper formatting
+          const textToInsert = `,\n  ${newTemplateUrlProperty}`;
           context.logger.debug(
             `    ➕ Inserting new property '${textToInsert}' at position ${templatePropertyNode.getStart(
               sourceFile
